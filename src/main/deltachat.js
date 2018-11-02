@@ -354,6 +354,10 @@ class DeltaChatController {
     }
   }
 
+  getChatMessages (messageIds) {
+    return messageIds.map(this.getChatMessage.bind(this))
+  }
+
   getChatMessage (messageId) {
     return messageIdToJson(messageId, this._dc)
   }

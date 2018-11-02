@@ -7,8 +7,8 @@ const Composer = require('./Composer')
 const { Overlay } = require('@blueprintjs/core')
 
 const MutationObserver = window.MutationObserver
-const IntersectionObserver = window.IntersectionObserver
 
+const { AutoSizer, InfiniteLoader, List } = require('react-virtualized')
 const { ConversationContext, Message } = require('./conversations')
 
 const GROUP_TYPES = [
@@ -24,11 +24,12 @@ class ChatView extends React.Component {
       setupMessage: false,
       attachmentMessage: null
     }
+    this.visibleMessages = {}
     this.onSetupMessageClose = this.onSetupMessageClose.bind(this)
     this.focusInputMessage = this.focusInputMessage.bind(this)
     this.scrollToBottom = this.scrollToBottom.bind(this)
+    this.loadMessagesResp = this.loadMessagesResp.bind(this)
     this.conversationDiv = React.createRef()
-    this.topMessageDiv = React.createRef()
   }
 
   writeMessage (text) {
@@ -38,16 +39,7 @@ class ChatView extends React.Component {
 
   componentWillUnmount () {
     if (this.scrollObserver) this.scrollObserver.disconnect()
-    if (this.loadMoreObserver) this.loadMoreObserver.disconnect()
-  }
-
-  attachLoadMoreObserver () {
-    if (!this.loadMoreObserver && this.topMessageDiv.current) {
-      this.loadMoreObserver = new IntersectionObserver(this.renderMoreChats)
-      this.loadMoreObserver.observe(this.topMessageDiv.current, {
-        threshold: 0.2
-      })
-    }
+    ipcRenderer.removeListener('loadMessagesResp', this.loadMessagesResp)
   }
 
   attachScrollObserver () {
@@ -58,15 +50,23 @@ class ChatView extends React.Component {
   }
 
   componentDidUpdate () {
-    this.attachLoadMoreObserver()
-    this.attachScrollObserver()
-    this.focusInputMessage()
+    // this.attachScrollObserver()
+    // this.scrollToBottom()
   }
 
   componentDidMount () {
-    this.scrollToBottom()
     this.focusInputMessage()
-    this.attachLoadMoreObserver()
+    this.scrollToBottom()
+    ipcRenderer.on('loadMessagesResp', this.loadMessagesResp)
+  }
+
+  loadMessagesResp (_, chatId, messages) {
+    var self = this
+    if (chatId !== this.props.chat.id) return console.error('chat id incorrect')
+    messages.map((msg) => {
+      self.visibleMessages[msg.id] = msg
+    })
+    this.promiseResolver()
   }
 
   scrollToBottom (force) {
@@ -96,14 +96,51 @@ class ChatView extends React.Component {
   }
 
   onSetupMessageClose () {
-    // TODO: go back to main chat screen
     this.setState({ setupMessage: false })
+  }
+
+  isRowLoaded ({ index }) {
+    var loaded = this.visibleMessages[this.props.chat.messageIds[index]]
+    console.log('isRowLoaded', loaded)
+    return !!loaded
+  }
+
+  loadMoreRows ({ startIndex, stopIndex }) {
+    var self = this
+    const chat = self.props.chat
+    const messageIds = chat.messageIds.slice(startIndex, stopIndex)
+    console.log('loading rows', messageIds, startIndex, stopIndex)
+    ipcRenderer.send('loadMessages', chat.id, messageIds)
+
+    self.promiseResolver = null
+
+    return new Promise(resolve => {
+      self.promiseResolver = resolve
+    })
+  }
+
+  rowRenderer ({ key, index, style }) {
+    console.log('row renderer', key, index, style)
+    const conversationType = convertChatType(this.props.chat.type)
+    var message = this.visibleMessages[this.props.chat.messageIds[index]]
+    if (!message) return console.error('message not found')
+    console.log('rendering', index, message)
+    return <li>
+      <RenderMessage
+        message={message}
+        conversationType={conversationType}
+        onClickAttachment={this.onClickAttachment.bind(this, message)}
+      />
+    </li>
   }
 
   render () {
     const { attachmentMessage, setupMessage } = this.state
     const { chat } = this.props
-    const conversationType = convertChatType(chat.type)
+
+    var rowRenderer = this.rowRenderer.bind(this)
+    var isRowLoaded = this.isRowLoaded.bind(this)
+    var loadMoreRows = this.loadMoreRows.bind(this)
 
     return (
       <div className='ChatView'>
@@ -118,19 +155,30 @@ class ChatView extends React.Component {
           close={this.onCloseAttachmentView.bind(this)}
         />
 
-        <div id='the-conversation' ref={this.conversationDiv}>
-          <ConversationContext>
-            {chat.messageIds.map(messageId => {
-              return <li>
-                <RenderMessage
-                  messageId={messageId}
-                  conversationType={conversationType}
-                  onClickAttachment={this.onClickAttachment.bind(this, messageId)}
-                />
-              </li>
-            })}
-          </ConversationContext>
-        </div>
+        <div style={{'display': 'block'}}>
+        <InfiniteLoader
+          isRowLoaded={isRowLoaded}
+          loadMoreRows={loadMoreRows}
+          rowCount={chat.messageIds.length}>
+          {({ onRowsRendered, registerChild }) => (
+            <AutoSizer>
+              {({ height, width }) => (
+                <ConversationContext>
+                  <List
+                    height={height}
+                    onRowsRendered={onRowsRendered}
+                    ref={registerChild}
+                    rowCount={chat.messageIds.length}
+                    rowHeight={50}
+                    rowRenderer={rowRenderer}
+                    width={width}
+                  />
+                </ConversationContext>
+              )}
+            </AutoSizer>
+          )}
+        </InfiniteLoader>
+      </div>
         <div className='InputMessage'>
           <Composer onSubmit={this.writeMessage.bind(this)} />
         </div>
@@ -170,8 +218,7 @@ class RenderMedia extends React.Component {
 
 class RenderMessage extends React.Component {
   render () {
-    const { onClickAttachment, messageId, conversationType } = this.props
-    const message = ipcRenderer.sendSync('dispatchSync', 'getChatMessage', messageId)
+    const { onClickAttachment, message, conversationType } = this.props
     const { msg, fromId, id } = message
     const timestamp = msg.timestamp * 1000
     const direction = message.isMe ? 'outgoing' : 'incoming'
@@ -200,10 +247,6 @@ class RenderMessage extends React.Component {
       console.log('show detail', message)
     }
 
-    function _onClickAttachment (event) {
-      onClickAttachment(message)
-    }
-
     const props = {
       padlock: msg.showPadlock,
       id,
@@ -216,7 +259,7 @@ class RenderMessage extends React.Component {
       onDelete,
       onShowDetail,
       contact,
-      onClickAttachment: _onClickAttachment,
+      onClickAttachment,
       authorAvatarPath: message.contact.profileImage,
       authorName: message.contact.name,
       authorPhoneNumber: message.contact.address,

@@ -71,6 +71,11 @@ function init (cwd) {
     })
   })
 
+  ipc.on('loadMessages', (e, chatId, messageIds) => {
+    var messages = dc.getChatMessages(messageIds)
+    windows.main.send('loadMessagesResp', chatId, messages)
+  })
+
   // This needs to be JSON serializable for rendering to the frontend.
   ipc.on('render', render)
   ipc.on('locale-data', (e, locale) => {
