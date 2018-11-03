@@ -8,7 +8,7 @@ const { Overlay } = require('@blueprintjs/core')
 
 const MutationObserver = window.MutationObserver
 
-const { AutoSizer, InfiniteLoader, List } = require('react-virtualized')
+const VirtualList = require('react-tiny-virtual-list').default
 const { ConversationContext, Message } = require('./conversations')
 
 const GROUP_TYPES = [
@@ -22,9 +22,9 @@ class ChatView extends React.Component {
     this.state = {
       error: false,
       setupMessage: false,
-      attachmentMessage: null
+      attachmentMessage: null,
+      visibleMessages: {}
     }
-    this.visibleMessages = {}
     this.onSetupMessageClose = this.onSetupMessageClose.bind(this)
     this.focusInputMessage = this.focusInputMessage.bind(this)
     this.scrollToBottom = this.scrollToBottom.bind(this)
@@ -62,10 +62,14 @@ class ChatView extends React.Component {
 
   loadMessagesResp (_, chatId, messages) {
     var self = this
+    console.log('loadMessagesresp')
     if (chatId !== this.props.chat.id) return console.error('chat id incorrect')
+    var visibleMessages = this.state.visibleMessages
     messages.map((msg) => {
-      self.visibleMessages[msg.id] = msg
+      console.log('msg', msg)
+      visibleMessages[msg.id] = msg
     })
+    this.setState({ visibleMessages })
     this.promiseResolver()
   }
 
@@ -100,15 +104,14 @@ class ChatView extends React.Component {
   }
 
   isRowLoaded ({ index }) {
-    var loaded = this.visibleMessages[this.props.chat.messageIds[index]]
-    console.log('isRowLoaded', loaded)
-    return !!loaded
+    var message = this.getMessage(index)
+    return !!message
   }
 
   loadMoreRows ({ startIndex, stopIndex }) {
     var self = this
     const chat = self.props.chat
-    const messageIds = chat.messageIds.slice(startIndex, stopIndex)
+    const messageIds = chat.messageIds.slice(startIndex, stopIndex + 1)
     console.log('loading rows', messageIds, startIndex, stopIndex)
     ipcRenderer.send('loadMessages', chat.id, messageIds)
 
@@ -119,19 +122,22 @@ class ChatView extends React.Component {
     })
   }
 
-  rowRenderer ({ key, index, style }) {
-    console.log('row renderer', key, index, style)
+  getMessage (index) {
+    return this.state.visibleMessages[this.props.chat.messageIds[index]]
+  }
+
+  rowRenderer ({ index, style }) {
+    console.log('row renderer', index, style)
     const conversationType = convertChatType(this.props.chat.type)
-    var message = this.visibleMessages[this.props.chat.messageIds[index]]
+    var message = this.getMessage(index)
     if (!message) return console.error('message not found')
     console.log('rendering', index, message)
-    return <li>
-      <RenderMessage
-        message={message}
-        conversationType={conversationType}
-        onClickAttachment={this.onClickAttachment.bind(this, message)}
-      />
-    </li>
+    return <RenderMessage
+      key={index}
+      message={message}
+      conversationType={conversationType}
+      onClickAttachment={this.onClickAttachment.bind(this, message)}
+    />
   }
 
   render () {
@@ -141,6 +147,11 @@ class ChatView extends React.Component {
     var rowRenderer = this.rowRenderer.bind(this)
     var isRowLoaded = this.isRowLoaded.bind(this)
     var loadMoreRows = this.loadMoreRows.bind(this)
+
+    function itemSize (index) {
+      // var item = this.getMessage(index)
+      return 50
+    }
 
     return (
       <div className='ChatView'>
@@ -155,30 +166,14 @@ class ChatView extends React.Component {
           close={this.onCloseAttachmentView.bind(this)}
         />
 
-        <div style={{'display': 'block'}}>
-        <InfiniteLoader
-          isRowLoaded={isRowLoaded}
-          loadMoreRows={loadMoreRows}
-          rowCount={chat.messageIds.length}>
-          {({ onRowsRendered, registerChild }) => (
-            <AutoSizer>
-              {({ height, width }) => (
-                <ConversationContext>
-                  <List
-                    height={height}
-                    onRowsRendered={onRowsRendered}
-                    ref={registerChild}
-                    rowCount={chat.messageIds.length}
-                    rowHeight={50}
-                    rowRenderer={rowRenderer}
-                    width={width}
-                  />
-                </ConversationContext>
-              )}
-            </AutoSizer>
-          )}
-        </InfiniteLoader>
-      </div>
+        <VirtualList
+          itemCount={chat.messageIds.length}
+          height={800}
+          width='100%'
+          scrollToIndex={chat.messageIds.length - 1}
+          itemSize={itemSize}
+          estimatedItemSize={40}
+          renderItem={rowRenderer} />
         <div className='InputMessage'>
           <Composer onSubmit={this.writeMessage.bind(this)} />
         </div>
