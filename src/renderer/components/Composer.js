@@ -1,11 +1,14 @@
 const React = require('react')
 
+const RenderMedia = require('./RenderMedia')
 const { ControlGroup, Button, InputGroup } = require('@blueprintjs/core')
+const { remote } = require('electron')
 
 class Composer extends React.Component {
   constructor (props) {
     super(props)
     this.state = {
+      attachment: {},
       value: '',
       error: false
     }
@@ -34,7 +37,10 @@ class Composer extends React.Component {
 
   sendMessage () {
     if (!this.state.value) return this.handleError()
-    this.props.onSubmit(this.state.value)
+    this.props.onSubmit({
+      attachment: this.state.attachment,
+      text: this.state.value
+    })
     this.clearInput()
   }
 
@@ -47,7 +53,16 @@ class Composer extends React.Component {
   }
 
   addAttachment () {
-    console.log('adding attachment')
+    var self = this
+    var opts = {
+      properties: ['openFile']
+    }
+    remote.dialog.showOpenDialog(opts, function (filenames) {
+      if (filenames && filenames[0]) {
+        console.log('updatind attachment', filenames[0])
+        self.setState({ attachment: filenames[0] })
+      }
+    })
   }
 
   render () {
@@ -55,8 +70,19 @@ class Composer extends React.Component {
     const addAttachmentButton = (
       <Button minimal icon='paperclip' onClick={this.addAttachment.bind(this)} />
     )
+
+    function getFilemime (url) {
+      return 'image/jpg'
+    }
+
     return (
       <ControlGroup className='composer' fill vertical={false}>
+        {this.state.attachment && <RenderMedia
+          url={this.state.attachment}
+          filemime={getFilemime(this.state.attachment)}
+          className='thumbnail'
+        />
+        }
         <InputGroup
           intent={this.state.error ? 'danger' : 'none'}
           large

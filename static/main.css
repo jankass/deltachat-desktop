@@ -6,6 +6,11 @@ body {
   background-color: white;
 }
 
+.thumbnail {
+  max-width: 50px;
+  max-height: 50px;
+}
+
 #root {
 
 }

@@ -163,6 +163,12 @@ class DeltaChatController {
     }
   }
 
+  sendImageMessage (chatId, text, file) {
+    var msg = this._dc.messageNew(C.DC_MSG_IMAGE)
+    msg.setFile(file)
+    this._dc.sendMessage(msg)
+  }
+
   /**
    * Dispatched when sending a message in ChatView
    */
