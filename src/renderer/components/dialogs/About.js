@@ -1,6 +1,6 @@
 const React = require('react')
 const { Classes, Dialog } = require('@blueprintjs/core')
-const { version } = require('../../../../package.json')
+const { APP_VERSION } = require('../../../config')
 
 class AboutDialog extends React.Component {
   render () {
@@ -15,7 +15,7 @@ class AboutDialog extends React.Component {
         onClose={onClose}
         canOutsideClickClose={false}>
         <div className={Classes.DIALOG_BODY}>
-          <p style={{ color: 'grey' }}>{'version ' + version}</p>
+          <p style={{ color: 'grey' }}>{`Version ${APP_VERSION}`}</p>
           <p>Official Delta Chat Desktop app.</p>
           <p>This software is licensed under <a href='https://github.com/deltachat/deltachat-desktop/blob/master/LICENSE'>GNU GPL version 3</a>.</p>
           <p>Source code is available on <a href='https://github.com/deltachat/deltachat-desktop'>GitHub</a>.</p>
