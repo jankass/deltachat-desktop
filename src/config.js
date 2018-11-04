@@ -1,10 +1,9 @@
 const appConfig = require('application-config')('DeltaChat')
 const path = require('path')
-const version = require('../package.json').version
 
 const APP_NAME = 'DeltaChat'
-const VERSION = require('../package.json').version
-const APP_VERSION = `${VERSION}-PREVIEW`
+const version = require('../package.json').version
+const APP_VERSION = `${version}-PREVIEW`
 
 const IS_TEST = isTest()
 const IS_PRODUCTION = isProduction()
